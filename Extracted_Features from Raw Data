@@ -1,0 +1,52 @@
+import os
+import librosa
+import numpy as np
+import torch
+from transformers import Wav2Vec2Processor, Wav2Vec2Model
+
+#Extraxtion Feature , xom
+
+# ✅ Define dataset directories
+input_dir = "D:/Lectures/Research/Satament, Question, or Exclamation/Raw Data"
+output_dir = "D:/Lectures/Research/Satament, Question, or Exclamation/Extracted_Features"
+
+os.makedirs(output_dir, exist_ok=True)
+
+# ✅ Load Wav2Vec2 Model
+processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
+wav2vec_model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h")
+
+# ✅ Iterate over dataset folders
+for class_name in os.listdir(input_dir):
+    class_path = os.path.join(input_dir, class_name)
+    if os.path.isdir(class_path):
+        output_class_dir = os.path.join(output_dir, class_name)
+        os.makedirs(output_class_dir, exist_ok=True)
+
+        for folder_name in os.listdir(class_path):
+            folder_path = os.path.join(class_path, folder_name)
+            if os.path.isdir(folder_path):
+                output_folder_dir = os.path.join(output_class_dir, folder_name)
+                os.makedirs(output_folder_dir, exist_ok=True)
+
+                for file_name in os.listdir(folder_path):
+                    if file_name.endswith(".ogg"):
+                        file_path = os.path.join(folder_path, file_name)
+
+                        try:
+                            # ✅ Load audio
+                            waveform, sr = librosa.load(file_path, sr=16000)
+
+                            # ✅ Process with Wav2Vec2
+                            input_values = processor(waveform, return_tensors="pt", sampling_rate=sr).input_values
+                            with torch.no_grad():
+                                features = wav2vec_model(input_values).last_hidden_state
+
+                            # ✅ Save extracted features
+                            output_file = os.path.join(output_folder_dir, file_name.replace(".ogg", ".npy"))
+                            np.save(output_file, features.squeeze().cpu().numpy())
+
+                            print(f"Processed: {file_path} → {output_file}")
+
+                        except Exception as e:
+                            print(f"Error processing {file_path}: {e}")
