@@ -1,0 +1,93 @@
+import os
+import librosa
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# ✅ Define dataset directories
+input_dir = "D:/Lectures/Research/Satament, Question, or Exclamation/Raw Data"
+mfcc_feature_dir = "D:/Lectures/Research/Satament, Question, or Exclamation/MFCC_Features"
+processed_feature_dir = "D:/Lectures/Research/Satament, Question, or Exclamation/Processed_MFCC_Features"
+
+# ✅ Create output directories
+os.makedirs(mfcc_feature_dir, exist_ok=True)
+os.makedirs(processed_feature_dir, exist_ok=True)
+
+# ✅ Define MFCC CNN Model
+class MFCCBranch(nn.Module):
+    def __init__(self, n_mfcc=40, time_steps=100):  # Adjust 'time_steps' based on MFCC time dimension
+        super(MFCCBranch, self).__init__()
+        self.conv_layers = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
+        # Compute flattened output size after convolutions (assuming input size [1, 40, time_steps])
+        fc_input_dim = 64 * (n_mfcc // 4) * (time_steps // 4)
+        self.fc = nn.Linear(fc_input_dim, 128)
+
+    def forward(self, x):
+        x = self.conv_layers(x)  # Apply CNN layers
+        x = x.view(x.size(0), -1)  # Flatten
+        return self.fc(x)  # Fully connected layer to 128D
+
+# ✅ Initialize Model
+n_mfcc = 40  # Number of MFCC coefficients
+time_steps = 100  # Estimated max time steps (adjust based on dataset)
+mfcc_cnn = MFCCBranch(n_mfcc, time_steps)
+
+# ✅ Iterate over dataset folders for feature extraction
+for class_name in os.listdir(input_dir):
+    class_path = os.path.join(input_dir, class_name)
+    if os.path.isdir(class_path):
+        mfcc_class_dir = os.path.join(mfcc_feature_dir, class_name)
+        os.makedirs(mfcc_class_dir, exist_ok=True)
+
+        processed_class_dir = os.path.join(processed_feature_dir, class_name)
+        os.makedirs(processed_class_dir, exist_ok=True)
+
+        for folder_name in os.listdir(class_path):
+            folder_path = os.path.join(class_path, folder_name)
+            if os.path.isdir(folder_path):
+                mfcc_folder_dir = os.path.join(mfcc_class_dir, folder_name)
+                os.makedirs(mfcc_folder_dir, exist_ok=True)
+
+                processed_folder_dir = os.path.join(processed_class_dir, folder_name)
+                os.makedirs(processed_folder_dir, exist_ok=True)
+
+                for file_name in os.listdir(folder_path):
+                    if file_name.endswith(".ogg"):
+                        file_path = os.path.join(folder_path, file_name)
+
+                        try:
+                            # ✅ Step 1: Load audio
+                            waveform, sr = librosa.load(file_path, sr=16000)
+
+                            # ✅ Step 2: Compute MFCC features
+                            mfcc = librosa.feature.mfcc(y=waveform, sr=sr, n_mfcc=n_mfcc)
+                            if mfcc.shape[1] > time_steps:  # Trim long sequences
+                                mfcc = mfcc[:, :time_steps]
+                            else:  # Pad short sequences
+                                mfcc = np.pad(mfcc, ((0, 0), (0, time_steps - mfcc.shape[1])))
+
+                            # ✅ Save MFCC features
+                            mfcc_file = os.path.join(mfcc_folder_dir, file_name.replace(".ogg", ".npy"))
+                            np.save(mfcc_file, mfcc)
+
+                            # ✅ Step 3: Process MFCC with CNN
+                            mfcc_tensor = torch.tensor(np.load(mfcc_file), dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+                            with torch.no_grad():
+                                processed_mfcc = mfcc_cnn(mfcc_tensor)  # Shape: [1, 128]
+
+                            # ✅ Save processed features
+                            processed_file = os.path.join(processed_folder_dir, file_name.replace(".ogg", ".npy"))
+                            np.save(processed_file, processed_mfcc.squeeze().cpu().numpy())
+
+                            print(f"Processed: {file_path} → {processed_file}")
+
+                        except Exception as e:
+                            print(f"Error processing {file_path}: {e}")
