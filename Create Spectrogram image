@@ -1,0 +1,52 @@
+import os
+import librosa
+import librosa.display
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Define input and output directories
+input_dir = 'D:/Lectures/Research/Satament, Question, or Exclamation/Raw Data'
+output_dir = 'D:/Lectures/Research/Satament, Question, or Exclamation/Spectrogram'
+
+# Ensure the output directory exists
+os.makedirs(output_dir, exist_ok=True)
+
+# Iterate through each class folder (e.g., "Statements", "Questions", "Exclamations")
+for class_name in os.listdir(input_dir):
+    class_path = os.path.join(input_dir, class_name)
+    if os.path.isdir(class_path):
+        output_class_dir = os.path.join(output_dir, class_name)
+        os.makedirs(output_class_dir, exist_ok=True)
+
+        # Iterate through each subfolder (each of the 10 folders)
+        for folder_name in os.listdir(class_path):
+            folder_path = os.path.join(class_path, folder_name)
+            if os.path.isdir(folder_path):
+                output_folder_dir = os.path.join(output_class_dir, folder_name)
+                os.makedirs(output_folder_dir, exist_ok=True)
+
+                # Process each audio file
+                for file_name in os.listdir(folder_path):
+                    if file_name.endswith('.ogg') or file_name.endswith('.wav'):  # Support OGG and WAV
+                        file_path = os.path.join(folder_path, file_name)
+                        
+                        # Load the audio file
+                        waveform, sr = librosa.load(file_path, sr=16000)
+                        
+                        # Compute the mel-spectrogram
+                        S = librosa.feature.melspectrogram(y=waveform, sr=sr, n_mels=128)
+                        S_dB = librosa.power_to_db(S, ref=np.max)
+                        
+                        # Plot and save the spectrogram using Matplotlib (without OpenCV)
+                        plt.figure(figsize=(2, 2))
+                        librosa.display.specshow(S_dB, sr=sr, x_axis='time', y_axis='mel')
+                        plt.colorbar(format='%+2.0f dB')
+                        #plt.title(f'Mel-Spectrogram: {file_name}')
+                        plt.title('Mel-Spectrogram')
+                        plt.tight_layout()
+
+                        # Save the spectrogram as PNG
+                        output_file_name = file_name.replace('.ogg', '.png').replace('.wav', '.png')
+                        output_file_path = os.path.join(output_folder_dir, output_file_name)
+                        plt.savefig(output_file_path)
+                        plt.close()
